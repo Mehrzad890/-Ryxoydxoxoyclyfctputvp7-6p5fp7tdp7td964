@@ -1,0 +1,1419 @@
+local Players           = game:GetService("Players")
+local RunService        = game:GetService("RunService")
+local TweenService      = game:GetService("TweenService")
+local UserInputService  = game:GetService("UserInputService")
+
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui   = LocalPlayer:WaitForChild("PlayerGui")
+
+local notifCooldown     = 10
+local notificationsEnabled = true
+local detectorEnabled = true
+
+local CONFIG = {
+    SPEED_MULTIPLIER    = 1.7,
+    MAX_AIR_TIME        = 3.0,
+    FLING_THRESHOLD     = 300,
+    JUMP_MULTIPLIER     = 1.6,
+    TELEPORT_DISTANCE   = 75,
+    CHECK_INTERVAL      = 0.35,
+    SAMPLE_COUNT        = 4,
+    DEFAULT_SIZE        = UDim2.new(0, 320, 0, 420),
+    MINIMIZED_SIZE      = UDim2.new(0, 320, 0, 42),
+    ANIM_SPEED          = 0.3,
+    COLORS = {
+        Background      = Color3.fromRGB(18, 18, 24),
+        CardBackground  = Color3.fromRGB(28, 28, 38),
+        TitleBar        = Color3.fromRGB(32, 32, 44),
+        TabActive       = Color3.fromRGB(45, 45, 60),
+        TabInactive     = Color3.fromRGB(25, 25, 35),
+        Clean           = Color3.fromRGB(50, 200, 80),
+        Cheat           = Color3.fromRGB(255, 55, 55),
+        Warning         = Color3.fromRGB(255, 200, 50),
+        Neutral         = Color3.fromRGB(180, 180, 190),
+        Analyzing       = Color3.fromRGB(255, 180, 50),
+        Text            = Color3.fromRGB(210, 210, 220),
+        TextDim         = Color3.fromRGB(120, 120, 140),
+        Accent          = Color3.fromRGB(100, 120, 255),
+        Border          = Color3.fromRGB(50, 50, 65),
+    }
+}
+
+local notifCooldowns = {}
+local whitelistedPlayers = {}
+local serverTeleporting = false
+local currentViewTarget = nil
+
+local ICONS = {
+    username   = "rbxassetid://136485052187963",
+    display    = "rbxassetid://108155244324878",
+    studs      = "rbxassetid://121615540167909",
+    normal     = "rbxassetid://115320390907184",
+    analyzing  = "rbxassetid://112148279212860",
+    scripter   = "rbxassetid://125920361880643",
+    off        = "rbxassetid://118026365011536",
+    on         = "rbxassetid://110786993356448",
+    logo       = "rbxassetid://121018724060431",
+    players    = "rbxassetid://113726939624961",
+    credits    = "rbxassetid://112853809073979",
+}
+
+local function makeCorner(parent, radius)
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(0, radius or 8)
+    c.Parent = parent
+    return c
+end
+
+local function makeStroke(parent, color, thickness)
+    local s = Instance.new("UIStroke")
+    s.Color = color or CONFIG.COLORS.Border
+    s.Thickness = thickness or 1
+    s.Transparency = 0.5
+    s.Parent = parent
+    return s
+end
+
+local function tweenObject(obj, props, duration, style, direction)
+    return TweenService:Create(obj, TweenInfo.new(
+        duration or CONFIG.ANIM_SPEED,
+        style or Enum.EasingStyle.Quad,
+        direction or Enum.EasingDirection.Out
+    ), props)
+end
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "ScripterDetectorV2"
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.ResetOnSpawn = false
+ScreenGui.IgnoreGuiInset = true
+ScreenGui.DisplayOrder = 100
+ScreenGui.Parent = PlayerGui
+
+local ShadowFrame = Instance.new("Frame")
+ShadowFrame.Size = CONFIG.DEFAULT_SIZE + UDim2.new(0, 12, 0, 12)
+ShadowFrame.Position = UDim2.new(0.01, -6, 0.5, -216)
+ShadowFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+ShadowFrame.BackgroundTransparency = 0.5
+ShadowFrame.BorderSizePixel = 0
+ShadowFrame.Parent = ScreenGui
+makeCorner(ShadowFrame, 14)
+
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "MainFrame"
+MainFrame.Size = CONFIG.DEFAULT_SIZE
+MainFrame.Position = UDim2.new(0.01, 0, 0.5, -210)
+MainFrame.BackgroundColor3 = CONFIG.COLORS.Background
+MainFrame.BorderSizePixel = 0
+MainFrame.Active = true
+MainFrame.ClipsDescendants = true
+MainFrame.Parent = ScreenGui
+makeCorner(MainFrame, 12)
+makeStroke(MainFrame, CONFIG.COLORS.Border, 1)
+
+local TitleBar = Instance.new("Frame")
+TitleBar.Name = "TitleBar"
+TitleBar.Size = UDim2.new(1, 0, 0, 42)
+TitleBar.BackgroundColor3 = CONFIG.COLORS.TitleBar
+TitleBar.BorderSizePixel = 0
+TitleBar.ZIndex = 5
+TitleBar.Parent = MainFrame
+makeCorner(TitleBar, 12)
+
+local titleCover = Instance.new("Frame")
+titleCover.Size = UDim2.new(1, 0, 0, 14)
+titleCover.Position = UDim2.new(0, 0, 1, -14)
+titleCover.BackgroundColor3 = CONFIG.COLORS.TitleBar
+titleCover.BorderSizePixel = 0
+titleCover.ZIndex = 4
+titleCover.Parent = TitleBar
+
+local logoImg = Instance.new("ImageLabel")
+logoImg.Size = UDim2.new(0, 28, 0, 28)
+logoImg.Position = UDim2.new(0, 10, 0.5, -14)
+logoImg.BackgroundTransparency = 1
+logoImg.Image = ICONS.logo
+logoImg.ScaleType = Enum.ScaleType.Fit
+logoImg.ZIndex = 7
+logoImg.Parent = TitleBar
+
+local titleText = Instance.new("TextLabel")
+titleText.Size = UDim2.new(1, -70, 0, 20)
+titleText.Position = UDim2.new(0, 46, 0, 6)
+titleText.BackgroundTransparency = 1
+titleText.Text = "SCRIPTER DETECTOR"
+titleText.TextColor3 = CONFIG.COLORS.Text
+titleText.TextSize = 14
+titleText.Font = Enum.Font.GothamBold
+titleText.TextXAlignment = Enum.TextXAlignment.Left
+titleText.ZIndex = 6
+titleText.Parent = TitleBar
+
+local subTitle = Instance.new("TextLabel")
+subTitle.Size = UDim2.new(1, -70, 0, 14)
+subTitle.Position = UDim2.new(0, 46, 0, 26)
+subTitle.BackgroundTransparency = 1
+subTitle.Text = "v2.1 - Advanced Anti-Cheat Visual"
+subTitle.TextColor3 = CONFIG.COLORS.TextDim
+subTitle.TextSize = 10
+subTitle.Font = Enum.Font.Gotham
+subTitle.TextXAlignment = Enum.TextXAlignment.Left
+subTitle.ZIndex = 6
+subTitle.Parent = TitleBar
+
+local ToggleBtn = Instance.new("TextButton")
+ToggleBtn.Size = UDim2.new(0, 38, 0, 28)
+ToggleBtn.Position = UDim2.new(1, -46, 0.5, -14)
+ToggleBtn.BackgroundTransparency = 1
+ToggleBtn.BorderSizePixel = 0
+ToggleBtn.Text = ""
+ToggleBtn.ZIndex = 7
+ToggleBtn.Parent = TitleBar
+
+local ToggleIcon = Instance.new("ImageLabel")
+ToggleIcon.Size = UDim2.new(0, 28, 0, 28)
+ToggleIcon.Position = UDim2.new(0, 5, 0, 0)
+ToggleIcon.BackgroundTransparency = 1
+ToggleIcon.Image = ICONS.on
+ToggleIcon.ScaleType = Enum.ScaleType.Fit
+ToggleIcon.ZIndex = 8
+ToggleIcon.Parent = ToggleBtn
+
+local TabContainer = Instance.new("Frame")
+TabContainer.Size = UDim2.new(1, 0, 0, 36)
+TabContainer.Position = UDim2.new(0, 0, 0, 42)
+TabContainer.BackgroundColor3 = Color3.fromRGB(22, 22, 30)
+TabContainer.BorderSizePixel = 0
+TabContainer.ZIndex = 4
+TabContainer.Parent = MainFrame
+local tabLayout = Instance.new("UIListLayout")
+tabLayout.FillDirection = Enum.FillDirection.Horizontal
+tabLayout.Padding = UDim.new(0, 2)
+tabLayout.SortOrder = Enum.SortOrder.LayoutOrder
+tabLayout.Parent = TabContainer
+local tabPadding = Instance.new("UIPadding")
+tabPadding.PaddingLeft = UDim.new(0, 4)
+tabPadding.PaddingTop = UDim.new(0, 4)
+tabPadding.PaddingBottom = UDim.new(0, 4)
+tabPadding.Parent = TabContainer
+
+local tabs = {}
+local activeTab = nil
+local function createTab(name, icon, order)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0.5, -3, 1, -8)
+    btn.BackgroundColor3 = CONFIG.COLORS.TabInactive
+    btn.BorderSizePixel = 0
+    btn.Text = ""
+    btn.LayoutOrder = order
+    btn.ZIndex = 5
+    btn.Parent = TabContainer
+    makeCorner(btn, 6)
+    local tabIcon = Instance.new("ImageLabel")
+    tabIcon.Size = UDim2.new(0, 16, 0, 16)
+    tabIcon.Position = UDim2.new(0, 10, 0.5, -8)
+    tabIcon.BackgroundTransparency = 1
+    tabIcon.Image = icon
+    tabIcon.ScaleType = Enum.ScaleType.Fit
+    tabIcon.ImageColor3 = CONFIG.COLORS.TextDim
+    tabIcon.ZIndex = 6
+    tabIcon.Parent = btn
+    local tabLabel = Instance.new("TextLabel")
+    tabLabel.Size = UDim2.new(1, -34, 1, 0)
+    tabLabel.Position = UDim2.new(0, 30, 0, 0)
+    tabLabel.BackgroundTransparency = 1
+    tabLabel.Text = string.upper(name)
+    tabLabel.TextColor3 = CONFIG.COLORS.TextDim
+    tabLabel.TextSize = 11
+    tabLabel.Font = Enum.Font.GothamBold
+    tabLabel.TextXAlignment = Enum.TextXAlignment.Left
+    tabLabel.ZIndex = 6
+    tabLabel.Parent = btn
+    local tab = { button = btn, icon = tabIcon, label = tabLabel, content = nil, name = name }
+    tabs[name] = tab
+    return tab
+end
+
+local function setActiveTab(tabName)
+    if activeTab == tabName then return end
+    activeTab = tabName
+    for name, tab in pairs(tabs) do
+        if name == tabName then
+            tweenObject(tab.button, { BackgroundColor3 = CONFIG.COLORS.TabActive }):Play()
+            tweenObject(tab.icon, { ImageColor3 = CONFIG.COLORS.Accent }):Play()
+            tweenObject(tab.label, { TextColor3 = CONFIG.COLORS.Text }):Play()
+            if tab.content then tab.content.Visible = true end
+        else
+            tweenObject(tab.button, { BackgroundColor3 = CONFIG.COLORS.TabInactive }):Play()
+            tweenObject(tab.icon, { ImageColor3 = CONFIG.COLORS.TextDim }):Play()
+            tweenObject(tab.label, { TextColor3 = CONFIG.COLORS.TextDim }):Play()
+            if tab.content then tab.content.Visible = false end
+        end
+    end
+end
+
+local PlayersTab = createTab("Players", ICONS.players, 1)
+local CreditsTab = createTab("Credits", ICONS.credits, 2)
+
+local PlayersContent = Instance.new("Frame")
+PlayersContent.Size = UDim2.new(1, 0, 1, -78)
+PlayersContent.Position = UDim2.new(0, 0, 0, 78)
+PlayersContent.BackgroundTransparency = 1
+PlayersContent.ZIndex = 3
+PlayersContent.Parent = MainFrame
+PlayersTab.content = PlayersContent
+
+local StatsBar = Instance.new("Frame")
+StatsBar.Size = UDim2.new(1, -8, 0, 30)
+StatsBar.Position = UDim2.new(0, 4, 0, 4)
+StatsBar.BackgroundColor3 = Color3.fromRGB(24, 24, 32)
+StatsBar.BorderSizePixel = 0
+StatsBar.ZIndex = 4
+StatsBar.Parent = PlayersContent
+makeCorner(StatsBar, 6)
+
+local PlayerCountLabel = Instance.new("TextLabel")
+PlayerCountLabel.Size = UDim2.new(0.5, 0, 1, 0)
+PlayerCountLabel.Position = UDim2.new(0, 10, 0, 0)
+PlayerCountLabel.BackgroundTransparency = 1
+PlayerCountLabel.Text = "Players: 0"
+PlayerCountLabel.TextColor3 = CONFIG.COLORS.TextDim
+PlayerCountLabel.TextSize = 11
+PlayerCountLabel.Font = Enum.Font.GothamBold
+PlayerCountLabel.TextXAlignment = Enum.TextXAlignment.Left
+PlayerCountLabel.ZIndex = 5
+PlayerCountLabel.Parent = StatsBar
+
+local DetectedCountLabel = Instance.new("TextLabel")
+DetectedCountLabel.Size = UDim2.new(0.5, 0, 1, 0)
+DetectedCountLabel.Position = UDim2.new(0.5, -10, 0, 0)
+DetectedCountLabel.BackgroundTransparency = 1
+DetectedCountLabel.Text = "Detected: 0"
+DetectedCountLabel.TextColor3 = CONFIG.COLORS.TextDim
+DetectedCountLabel.TextSize = 11
+DetectedCountLabel.Font = Enum.Font.GothamBold
+DetectedCountLabel.TextXAlignment = Enum.TextXAlignment.Right
+DetectedCountLabel.ZIndex = 5
+DetectedCountLabel.Parent = StatsBar
+
+local NotifSettings = Instance.new("Frame")
+NotifSettings.Size = UDim2.new(1, -8, 0, 26)
+NotifSettings.Position = UDim2.new(0, 4, 0, 38)
+NotifSettings.BackgroundColor3 = Color3.fromRGB(24, 24, 32)
+NotifSettings.BorderSizePixel = 0
+NotifSettings.ZIndex = 4
+NotifSettings.Parent = PlayersContent
+makeCorner(NotifSettings, 6)
+
+local AlertLbl = Instance.new("TextLabel")
+AlertLbl.Size = UDim2.new(0, 45, 1, 0)
+AlertLbl.Position = UDim2.new(0, 8, 0, 0)
+AlertLbl.BackgroundTransparency = 1
+AlertLbl.Text = "Alerts:"
+AlertLbl.TextColor3 = CONFIG.COLORS.TextDim
+AlertLbl.TextSize = 10
+AlertLbl.Font = Enum.Font.GothamBold
+AlertLbl.TextXAlignment = Enum.TextXAlignment.Left
+AlertLbl.ZIndex = 5
+AlertLbl.Parent = NotifSettings
+
+local NotifToggleBtn = Instance.new("TextButton")
+NotifToggleBtn.Size = UDim2.new(0, 30, 0, 18)
+NotifToggleBtn.Position = UDim2.new(0, 52, 0.5, -9)
+NotifToggleBtn.BackgroundColor3 = CONFIG.COLORS.Clean
+NotifToggleBtn.BorderSizePixel = 0
+NotifToggleBtn.Text = "ON"
+NotifToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+NotifToggleBtn.TextSize = 9
+NotifToggleBtn.Font = Enum.Font.GothamBold
+NotifToggleBtn.ZIndex = 6
+NotifToggleBtn.Parent = NotifSettings
+makeCorner(NotifToggleBtn, 4)
+NotifToggleBtn.MouseButton1Click:Connect(function()
+    notificationsEnabled = not notificationsEnabled
+    NotifToggleBtn.Text = notificationsEnabled and "ON" or "OFF"
+    NotifToggleBtn.BackgroundColor3 = notificationsEnabled and CONFIG.COLORS.Clean or CONFIG.COLORS.Cheat
+end)
+
+local DelayLbl = Instance.new("TextLabel")
+DelayLbl.Size = UDim2.new(0, 38, 1, 0)
+DelayLbl.Position = UDim2.new(0, 90, 0, 0)
+DelayLbl.BackgroundTransparency = 1
+DelayLbl.Text = "Delay:"
+DelayLbl.TextColor3 = CONFIG.COLORS.TextDim
+DelayLbl.TextSize = 10
+DelayLbl.Font = Enum.Font.GothamBold
+DelayLbl.TextXAlignment = Enum.TextXAlignment.Left
+DelayLbl.ZIndex = 5
+DelayLbl.Parent = NotifSettings
+
+local DelayMinus = Instance.new("TextButton")
+DelayMinus.Size = UDim2.new(0, 20, 0, 18)
+DelayMinus.Position = UDim2.new(0, 126, 0.5, -9)
+DelayMinus.BackgroundColor3 = Color3.fromRGB(50, 50, 65)
+DelayMinus.BorderSizePixel = 0
+DelayMinus.Text = "-"
+DelayMinus.TextColor3 = CONFIG.COLORS.Text
+DelayMinus.TextSize = 12
+DelayMinus.Font = Enum.Font.GothamBold
+DelayMinus.ZIndex = 6
+DelayMinus.Parent = NotifSettings
+makeCorner(DelayMinus, 4)
+
+local DelayText = Instance.new("TextLabel")
+DelayText.Size = UDim2.new(0, 30, 1, 0)
+DelayText.Position = UDim2.new(0, 148, 0, 0)
+DelayText.BackgroundTransparency = 1
+DelayText.Text = notifCooldown .. "s"
+DelayText.TextColor3 = CONFIG.COLORS.Text
+DelayText.TextSize = 10
+DelayText.Font = Enum.Font.GothamBold
+DelayText.ZIndex = 5
+DelayText.Parent = NotifSettings
+
+local DelayPlus = Instance.new("TextButton")
+DelayPlus.Size = UDim2.new(0, 20, 0, 18)
+DelayPlus.Position = UDim2.new(0, 178, 0.5, -9)
+DelayPlus.BackgroundColor3 = Color3.fromRGB(50, 50, 65)
+DelayPlus.BorderSizePixel = 0
+DelayPlus.Text = "+"
+DelayPlus.TextColor3 = CONFIG.COLORS.Text
+DelayPlus.TextSize = 12
+DelayPlus.Font = Enum.Font.GothamBold
+DelayPlus.ZIndex = 6
+DelayPlus.Parent = NotifSettings
+makeCorner(DelayPlus, 4)
+
+DelayMinus.MouseButton1Click:Connect(function()
+    notifCooldown = math.max(0, notifCooldown - 5)
+    DelayText.Text = notifCooldown .. "s"
+end)
+DelayPlus.MouseButton1Click:Connect(function()
+    notifCooldown = math.min(60, notifCooldown + 5)
+    DelayText.Text = notifCooldown .. "s"
+end)
+
+local UnviewBtn = Instance.new("TextButton")
+UnviewBtn.Size = UDim2.new(0, 52, 0, 18)
+UnviewBtn.Position = UDim2.new(1, -58, 0.5, -9)
+UnviewBtn.BackgroundColor3 = Color3.fromRGB(180, 20, 20)
+UnviewBtn.BorderSizePixel = 0
+UnviewBtn.Text = "UNVIEW"
+UnviewBtn.TextColor3 = Color3.new(1, 1, 1)
+UnviewBtn.TextSize = 9
+UnviewBtn.Font = Enum.Font.GothamBold
+UnviewBtn.ZIndex = 6
+UnviewBtn.Visible = false
+UnviewBtn.Parent = NotifSettings
+makeCorner(UnviewBtn, 4)
+UnviewBtn.MouseButton1Click:Connect(function()
+    local char = LocalPlayer.Character
+    if char then
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if hum then
+            workspace.CurrentCamera.CameraSubject = hum
+            UnviewBtn.Visible = false
+            currentViewTarget = nil
+            if notifications then notifications:show("Stopped Viewing", "Camera returned to you.", CONFIG.COLORS.TextDim, ICONS.normal) end
+        end
+    end
+end)
+
+local ScrollFrame = Instance.new("ScrollingFrame")
+ScrollFrame.Size = UDim2.new(1, -8, 1, -72)
+ScrollFrame.Position = UDim2.new(0, 4, 0, 68)
+ScrollFrame.BackgroundTransparency = 1
+ScrollFrame.BorderSizePixel = 0
+ScrollFrame.ScrollBarThickness = 4
+ScrollFrame.ScrollBarImageColor3 = CONFIG.COLORS.Accent
+ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+ScrollFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+ScrollFrame.ZIndex = 3
+ScrollFrame.Parent = PlayersContent
+local listLayout = Instance.new("UIListLayout")
+listLayout.Padding = UDim.new(0, 6)
+listLayout.SortOrder = Enum.SortOrder.Name
+listLayout.Parent = ScrollFrame
+local scrollPadding = Instance.new("UIPadding")
+scrollPadding.PaddingTop = UDim.new(0, 2)
+scrollPadding.PaddingBottom = UDim.new(0, 2)
+scrollPadding.Parent = ScrollFrame
+
+local CreditsContent = Instance.new("Frame")
+CreditsContent.Size = UDim2.new(1, 0, 1, -78)
+CreditsContent.Position = UDim2.new(0, 0, 0, 78)
+CreditsContent.BackgroundTransparency = 1
+CreditsContent.Visible = false
+CreditsContent.ZIndex = 3
+CreditsContent.Parent = MainFrame
+CreditsTab.content = CreditsContent
+
+local CreditsScroll = Instance.new("ScrollingFrame")
+CreditsScroll.Size = UDim2.new(1, -16, 1, -16)
+CreditsScroll.Position = UDim2.new(0, 8, 0, 8)
+CreditsScroll.BackgroundTransparency = 1
+CreditsScroll.BorderSizePixel = 0
+CreditsScroll.ScrollBarThickness = 4
+CreditsScroll.ScrollBarImageColor3 = CONFIG.COLORS.Accent
+CreditsScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+CreditsScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+CreditsScroll.ZIndex = 3
+CreditsScroll.Parent = CreditsContent
+local creditsLayout = Instance.new("UIListLayout")
+creditsLayout.Padding = UDim.new(0, 12)
+creditsLayout.SortOrder = Enum.SortOrder.LayoutOrder
+creditsLayout.Parent = CreditsScroll
+
+local function createSection(title, order)
+    local section = Instance.new("Frame")
+    section.Size = UDim2.new(1, 0, 0, 0)
+    section.AutomaticSize = Enum.AutomaticSize.Y
+    section.BackgroundTransparency = 1
+    section.LayoutOrder = order
+    section.Parent = CreditsScroll
+    local secLayout = Instance.new("UIListLayout")
+    secLayout.Padding = UDim.new(0, 8)
+    secLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    secLayout.Parent = section
+    local secLabel = Instance.new("TextLabel")
+    secLabel.Size = UDim2.new(1, 0, 0, 22)
+    secLabel.BackgroundTransparency = 1
+    secLabel.Text = title
+    secLabel.TextColor3 = CONFIG.COLORS.Accent
+    secLabel.TextSize = 12
+    secLabel.Font = Enum.Font.GothamBold
+    secLabel.TextXAlignment = Enum.TextXAlignment.Left
+    secLabel.LayoutOrder = 1
+    secLabel.Parent = section
+    return section
+end
+
+local function createCreditEntry(name, role, desc, order, parent)
+    local entry = Instance.new("Frame")
+    entry.Size = UDim2.new(1, 0, 0, 52)
+    entry.BackgroundColor3 = CONFIG.COLORS.CardBackground
+    entry.BorderSizePixel = 0
+    entry.LayoutOrder = order
+    entry.Parent = parent
+    makeCorner(entry, 8)
+    local nameLbl = Instance.new("TextLabel")
+    nameLbl.Size = UDim2.new(1, -16, 0, 18)
+    nameLbl.Position = UDim2.new(0, 12, 0, 6)
+    nameLbl.BackgroundTransparency = 1
+    nameLbl.Text = name
+    nameLbl.TextColor3 = CONFIG.COLORS.Text
+    nameLbl.TextSize = 13
+    nameLbl.Font = Enum.Font.GothamBold
+    nameLbl.TextXAlignment = Enum.TextXAlignment.Left
+    nameLbl.TextTruncate = Enum.TextTruncate.AtEnd
+    nameLbl.Parent = entry
+    local roleLbl = Instance.new("TextLabel")
+    roleLbl.Size = UDim2.new(1, -16, 0, 14)
+    roleLbl.Position = UDim2.new(0, 12, 0, 24)
+    roleLbl.BackgroundTransparency = 1
+    roleLbl.Text = role
+    roleLbl.TextColor3 = CONFIG.COLORS.Accent
+    roleLbl.TextSize = 11
+    roleLbl.Font = Enum.Font.GothamBold
+    roleLbl.TextXAlignment = Enum.TextXAlignment.Left
+    roleLbl.TextTruncate = Enum.TextTruncate.AtEnd
+    roleLbl.Parent = entry
+    if desc and desc ~= "" then
+        local descLbl = Instance.new("TextLabel")
+        descLbl.Size = UDim2.new(1, -16, 0, 12)
+        descLbl.Position = UDim2.new(0, 12, 0, 38)
+        descLbl.BackgroundTransparency = 1
+        descLbl.Text = desc
+        descLbl.TextColor3 = CONFIG.COLORS.TextDim
+        descLbl.TextSize = 10
+        descLbl.Font = Enum.Font.Gotham
+        descLbl.TextXAlignment = Enum.TextXAlignment.Left
+        descLbl.TextTruncate = Enum.TextTruncate.AtEnd
+        descLbl.Parent = entry
+    end
+    return entry
+end
+
+local LogoSection = Instance.new("Frame")
+LogoSection.Size = UDim2.new(1, 0, 0, 110)
+LogoSection.BackgroundColor3 = CONFIG.COLORS.CardBackground
+LogoSection.BorderSizePixel = 0
+LogoSection.LayoutOrder = 1
+LogoSection.Parent = CreditsScroll
+makeCorner(LogoSection, 12)
+makeStroke(LogoSection, CONFIG.COLORS.Accent, 1)
+local logoHeader = Instance.new("ImageLabel")
+logoHeader.Size = UDim2.new(0, 56, 0, 56)
+logoHeader.Position = UDim2.new(0.5, -28, 0, 14)
+logoHeader.BackgroundTransparency = 1
+logoHeader.Image = ICONS.logo
+logoHeader.ScaleType = Enum.ScaleType.Fit
+logoHeader.Parent = LogoSection
+local logoTitle = Instance.new("TextLabel")
+logoTitle.Size = UDim2.new(1, 0, 0, 22)
+logoTitle.Position = UDim2.new(0, 0, 0, 76)
+logoTitle.BackgroundTransparency = 1
+logoTitle.Text = "SCRIPTER DETECTOR V2.1"
+logoTitle.TextColor3 = CONFIG.COLORS.Text
+logoTitle.TextSize = 15
+logoTitle.Font = Enum.Font.GothamBold
+logoTitle.Parent = LogoSection
+local logoSub = Instance.new("TextLabel")
+logoSub.Size = UDim2.new(1, 0, 0, 16)
+logoSub.Position = UDim2.new(0, 0, 0, 96)
+logoSub.BackgroundTransparency = 1
+logoSub.Text = "Advanced Anti-Cheat Visual System"
+logoSub.TextColor3 = CONFIG.COLORS.TextDim
+logoSub.TextSize = 11
+logoSub.Font = Enum.Font.Gotham
+logoSub.Parent = LogoSection
+local devSection = createSection("DEVELOPMENT TEAM", 2)
+createCreditEntry("Claude (Anthropic)", "Lead Scripter", "Original architecture & core detection systems", 2, devSection)
+createCreditEntry("Bah", "Developer", "Modifications, UI improvements & enhancements", 3, devSection)
+createCreditEntry("ZERETET", "Developer", "Made Improvements", 4, devSection)
+local detectSection = createSection("DETECTION SYSTEMS", 3)
+local detections = {
+    {"Speed Hack Detection", "Velocity-based speed analysis"},
+    {"Fly Hack Detection", "Air time & Y-axis monitoring"},
+    {"Noclip Detection", "Collision raycast verification"},
+    {"Teleport Detection", "Position delta analysis"},
+    {"Fling Detection", "Total velocity threshold"},
+    {"Abnormal Jump Detection", "Jump power multiplier check"},
+    {"Sample Averaging", "Reduces false positives"}
+}
+for i, det in ipairs(detections) do
+    local entry = Instance.new("Frame")
+    entry.Size = UDim2.new(1, 0, 0, 28)
+    entry.BackgroundColor3 = i % 2 == 0 and Color3.fromRGB(24, 24, 32) or CONFIG.COLORS.CardBackground
+    entry.BorderSizePixel = 0
+    entry.LayoutOrder = i + 1
+    entry.Parent = detectSection
+    makeCorner(entry, 4)
+    local dot = Instance.new("Frame")
+    dot.Size = UDim2.new(0, 6, 0, 6)
+    dot.Position = UDim2.new(0, 10, 0.5, -3)
+    dot.BackgroundColor3 = CONFIG.COLORS.Clean
+    dot.BorderSizePixel = 0
+    dot.Parent = entry
+    local detName = Instance.new("TextLabel")
+    detName.Size = UDim2.new(0.55, 0, 1, 0)
+    detName.Position = UDim2.new(0, 24, 0, 0)
+    detName.BackgroundTransparency = 1
+    detName.Text = det[1]
+    detName.TextColor3 = CONFIG.COLORS.Text
+    detName.TextSize = 10
+    detName.Font = Enum.Font.GothamBold
+    detName.TextXAlignment = Enum.TextXAlignment.Left
+    detName.Parent = entry
+    local detDesc = Instance.new("TextLabel")
+    detDesc.Size = UDim2.new(0.45, -10, 1, 0)
+    detDesc.Position = UDim2.new(0.55, 0, 0, 0)
+    detDesc.BackgroundTransparency = 1
+    detDesc.Text = det[2]
+    detDesc.TextColor3 = CONFIG.COLORS.TextDim
+    detDesc.TextSize = 9
+    detDesc.Font = Enum.Font.Gotham
+    detDesc.TextXAlignment = Enum.TextXAlignment.Right
+    detDesc.TextTruncate = Enum.TextTruncate.AtEnd
+    detDesc.Parent = entry
+end
+local featureSection = createSection("UI FEATURES", 4)
+local features = {
+    "Draggable Interface", "Tab-based Navigation", "Real-time Stats Bar",
+    "Player Avatar Display", "Whitelist Button", "Hover Effects",
+    "Smooth Animations", "Notification System", "Alert Delay Controls",
+    "Auto-hide Notifications", "Keyboard Shortcut (F4)", "Minimize/Maximize",
+    "Clickable Notifications", "Spectate View Option"
+}
+for i, feature in ipairs(features) do
+    local entry = Instance.new("Frame")
+    entry.Size = UDim2.new(1, 0, 0, 24)
+    entry.BackgroundColor3 = i % 2 == 0 and Color3.fromRGB(24, 24, 32) or CONFIG.COLORS.CardBackground
+    entry.BorderSizePixel = 0
+    entry.LayoutOrder = i + 1
+    entry.Parent = featureSection
+    makeCorner(entry, 4)
+    local featLbl = Instance.new("TextLabel")
+    featLbl.Size = UDim2.new(1, -20, 1, 0)
+    featLbl.Position = UDim2.new(0, 14, 0, 0)
+    featLbl.BackgroundTransparency = 1
+    featLbl.Text = "- " .. feature
+    featLbl.TextColor3 = CONFIG.COLORS.Text
+    featLbl.TextSize = 10
+    featLbl.Font = Enum.Font.Gotham
+    featLbl.TextXAlignment = Enum.TextXAlignment.Left
+    featLbl.Parent = entry
+end
+local versionSection = createSection("VERSION INFO", 5)
+local versionInfo = {
+    {"Version", "2.1.0"},
+    {"Build", "Strict Threshold Update"},
+    {"Engine", "Roblox Luau"},
+    {"Type", "LocalScript"},
+    {"Location", "StarterPlayerScripts"},
+    {"Keybind", "F4 (Toggle)"}
+}
+for i, info in ipairs(versionInfo) do
+    local entry = Instance.new("Frame")
+    entry.Size = UDim2.new(1, 0, 0, 26)
+    entry.BackgroundColor3 = i % 2 == 0 and Color3.fromRGB(24, 24, 32) or CONFIG.COLORS.CardBackground
+    entry.BorderSizePixel = 0
+    entry.LayoutOrder = i + 1
+    entry.Parent = versionSection
+    makeCorner(entry, 4)
+    local infoKey = Instance.new("TextLabel")
+    infoKey.Size = UDim2.new(0.4, 0, 1, 0)
+    infoKey.Position = UDim2.new(0, 12, 0, 0)
+    infoKey.BackgroundTransparency = 1
+    infoKey.Text = info[1]
+    infoKey.TextColor3 = CONFIG.COLORS.TextDim
+    infoKey.TextSize = 11
+    infoKey.Font = Enum.Font.GothamBold
+    infoKey.TextXAlignment = Enum.TextXAlignment.Left
+    infoKey.Parent = entry
+    local infoVal = Instance.new("TextLabel")
+    infoVal.Size = UDim2.new(0.6, -12, 1, 0)
+    infoVal.Position = UDim2.new(0.4, 0, 0, 0)
+    infoVal.BackgroundTransparency = 1
+    infoVal.Text = info[2]
+    infoVal.TextColor3 = CONFIG.COLORS.Text
+    infoVal.TextSize = 11
+    infoVal.Font = Enum.Font.Gotham
+    infoVal.TextXAlignment = Enum.TextXAlignment.Right
+    infoVal.Parent = entry
+end
+local thanksSection = createSection("SPECIAL THANKS", 6)
+createCreditEntry("Roblox Community", "For inspiration and feedback", "", 2, thanksSection)
+createCreditEntry("Anti-Cheat Developers", "For detection methodologies", "", 3, thanksSection)
+createCreditEntry("Open Source Contributors", "For various utilities used", "", 4, thanksSection)
+local footerFrame = Instance.new("Frame")
+footerFrame.Size = UDim2.new(1, 0, 0, 50)
+footerFrame.BackgroundColor3 = CONFIG.COLORS.CardBackground
+footerFrame.BorderSizePixel = 0
+footerFrame.LayoutOrder = 7
+footerFrame.Parent = CreditsScroll
+makeCorner(footerFrame, 8)
+local footerLine1 = Instance.new("TextLabel")
+footerLine1.Size = UDim2.new(1, 0, 0, 18)
+footerLine1.Position = UDim2.new(0, 0, 0, 10)
+footerLine1.BackgroundTransparency = 1
+footerLine1.Text = "Made with love for a safer Roblox"
+footerLine1.TextColor3 = CONFIG.COLORS.TextDim
+footerLine1.TextSize = 10
+footerLine1.Font = Enum.Font.Gotham
+footerLine1.Parent = footerFrame
+local footerLine2 = Instance.new("TextLabel")
+footerLine2.Size = UDim2.new(1, 0, 0, 16)
+footerLine2.Position = UDim2.new(0, 0, 0, 28)
+footerLine2.BackgroundTransparency = 1
+footerLine2.Text = "(c) 2026 Scripter Detector Team - All Rights Reserved"
+footerLine2.TextColor3 = Color3.fromRGB(70, 70, 90)
+footerLine2.TextSize = 9
+footerLine2.Font = Enum.Font.Gotham
+footerLine2.Parent = footerFrame
+PlayersTab.button.MouseButton1Click:Connect(function() setActiveTab("Players") end)
+CreditsTab.button.MouseButton1Click:Connect(function() setActiveTab("Credits") end)
+setActiveTab("Players")
+
+local dragging, dragInput, dragStart, startPos = false, nil, nil, nil
+TitleBar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPos = MainFrame.Position
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then dragging = false end
+        end)
+    end
+end)
+TitleBar.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+        dragInput = input
+    end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if input == dragInput and dragging then
+        local delta = input.Position - dragStart
+        local newPos = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        tweenObject(MainFrame, { Position = newPos }):Play()
+        tweenObject(ShadowFrame, { Position = newPos + UDim2.new(0, -6, 0, -6) }):Play()
+    end
+end)
+
+local function toggleDetector()
+    detectorEnabled = not detectorEnabled
+    if detectorEnabled then
+        ToggleIcon.Image = ICONS.on
+        tweenObject(MainFrame, { Size = CONFIG.DEFAULT_SIZE }):Play()
+        tweenObject(ShadowFrame, { Size = CONFIG.DEFAULT_SIZE + UDim2.new(0, 12, 0, 12) }):Play()
+        TabContainer.Visible = true
+        PlayersContent.Visible = (activeTab == "Players")
+        CreditsContent.Visible = (activeTab == "Credits")
+    else
+        ToggleIcon.Image = ICONS.off
+        tweenObject(MainFrame, { Size = CONFIG.MINIMIZED_SIZE }):Play()
+        tweenObject(ShadowFrame, { Size = CONFIG.MINIMIZED_SIZE + UDim2.new(0, 12, 0, 12) }):Play()
+        TabContainer.Visible = false
+        PlayersContent.Visible = false
+        CreditsContent.Visible = false
+    end
+end
+ToggleBtn.MouseButton1Click:Connect(toggleDetector)
+
+local playerCards = {}
+local playerData = {}
+local detectedPlayers = {}
+
+local function viewPlayer(playerName)
+    local player = Players:FindFirstChild(playerName)
+    if not player then 
+        if notifications then notifications:show("View Failed", "Player not found.", CONFIG.COLORS.Warning, ICONS.off) end
+        return 
+    end
+    
+    if not player.Character then 
+        if notifications then notifications:show("View Failed", playerName .. " has no character.", CONFIG.COLORS.Warning, ICONS.off) end
+        return 
+    end
+    
+    local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
+    if not humanoid then 
+        if notifications then notifications:show("View Failed", "Humanoid not found.", CONFIG.COLORS.Warning, ICONS.off) end
+        return 
+    end
+    
+    currentViewTarget = playerName
+    workspace.CurrentCamera.CameraSubject = humanoid
+    UnviewBtn.Visible = true
+    if notifications then notifications:show("Viewing Player", "Camera locked to " .. playerName .. ".", CONFIG.COLORS.Accent, ICONS.players) end
+end
+
+local function scrollToPlayer(targetName)
+    if not detectorEnabled then
+        detectorEnabled = true
+        ToggleIcon.Image = ICONS.on
+        tweenObject(MainFrame, { Size = CONFIG.DEFAULT_SIZE }):Play()
+        tweenObject(ShadowFrame, { Size = CONFIG.DEFAULT_SIZE + UDim2.new(0, 12, 0, 12) }):Play()
+        TabContainer.Visible = true
+    end
+    
+    PlayersContent.Visible = true
+    CreditsContent.Visible = false
+    setActiveTab("Players")
+    
+    local targetCard = playerCards[targetName]
+    if not targetCard or not targetCard.card then 
+        return 
+    end
+    
+    local startTime = tick()
+    while ScrollFrame.AbsoluteCanvasSize.Y <= 0 and tick() - startTime < 1 do
+        RunService.Heartbeat:Wait()
+    end
+    
+    local cFrame = targetCard.card
+    local sFrame = ScrollFrame
+    local canvasOffset = cFrame.AbsolutePosition.Y - sFrame.AbsolutePosition.Y
+    local canvasSize = sFrame.AbsoluteCanvasSize.Y
+    local viewSize = sFrame.AbsoluteSize.Y
+    
+    if canvasSize <= 0 or viewSize <= 0 then 
+        return 
+    end
+    
+    canvasOffset = canvasOffset - (viewSize / 4)
+    canvasOffset = math.clamp(canvasOffset, 0, math.max(0, canvasSize - viewSize))
+    
+    tweenObject(sFrame, { CanvasPosition = Vector2.new(0, canvasOffset) }):Play()
+    tweenObject(targetCard.cardStroke, { Color = CONFIG.COLORS.Accent, Transparency = 0 }):Play()
+    task.delay(1.5, function()
+        pcall(function() tweenObject(targetCard.cardStroke, { Color = CONFIG.COLORS.Border, Transparency = 0.5 }):Play() end)
+    end)
+end
+
+-- NOTIFICATION SYSTEM DEFINED HERE SO IT CAN SEE FUNCTIONS ABOVE
+local notifications
+local Notifications = {}
+function Notifications.new(parent)
+    local container = Instance.new("Frame")
+    container.Size = UDim2.new(0, 320, 1, 0)
+    container.Position = UDim2.new(1, -330, 0, 0)
+    container.BackgroundTransparency = 1
+    container.ZIndex = 100
+    container.Parent = parent
+    local layout = Instance.new("UIListLayout")
+    layout.Padding = UDim.new(0, 8)
+    layout.SortOrder = Enum.SortOrder.LayoutOrder
+    layout.VerticalAlignment = Enum.VerticalAlignment.Top
+    layout.Parent = container
+    local padding = Instance.new("UIPadding")
+    padding.PaddingTop = UDim.new(0, 60)
+    padding.PaddingRight = UDim.new(0, 10)
+    padding.Parent = container
+    return {
+        container = container,
+        show = function(self, title, message, color, icon, playerName)
+            if not notificationsEnabled then return end
+            color = color or CONFIG.COLORS.Warning
+            local notification = Instance.new("Frame")
+            notification.Size = UDim2.new(1, 0, 0, 0)
+            notification.BackgroundTransparency = 1
+            notification.LayoutOrder = 100
+            notification.Parent = container
+            
+            local bg = Instance.new("TextButton")
+            bg.Size = UDim2.new(1, 0, 0, 64)
+            bg.BackgroundColor3 = CONFIG.COLORS.Background
+            bg.BorderSizePixel = 0
+            bg.Text = ""
+            bg.AutoButtonColor = false
+            bg.Parent = notification
+            makeCorner(bg, 10)
+            makeStroke(bg, color, 2)
+            
+            local sidebar = Instance.new("Frame")
+            sidebar.Size = UDim2.new(0, 4, 0.7, 0)
+            sidebar.Position = UDim2.new(0, 8, 0.15, 0)
+            sidebar.BackgroundColor3 = color
+            sidebar.BorderSizePixel = 0
+            sidebar.Parent = bg
+            makeCorner(sidebar, 4)
+            if icon then
+                local iconImg = Instance.new("ImageLabel")
+                iconImg.Size = UDim2.new(0, 22, 0, 22)
+                iconImg.Position = UDim2.new(0, 18, 0, 8)
+                iconImg.BackgroundTransparency = 1
+                iconImg.Image = icon
+                iconImg.ScaleType = Enum.ScaleType.Fit
+                iconImg.ImageColor3 = color
+                iconImg.Parent = bg
+            end
+            local titleLbl = Instance.new("TextLabel")
+            titleLbl.Size = UDim2.new(1, -90, 0, 18)
+            titleLbl.Position = UDim2.new(0, 46, 0, 8)
+            titleLbl.BackgroundTransparency = 1
+            titleLbl.Text = title
+            titleLbl.TextColor3 = color
+            titleLbl.TextSize = 13
+            titleLbl.Font = Enum.Font.GothamBold
+            titleLbl.TextXAlignment = Enum.TextXAlignment.Left
+            titleLbl.TextTruncate = Enum.TextTruncate.AtEnd
+            titleLbl.Parent = bg
+            local msgLbl = Instance.new("TextLabel")
+            msgLbl.Size = UDim2.new(1, -48, 0, 28)
+            msgLbl.Position = UDim2.new(0, 46, 0, 28)
+            msgLbl.BackgroundTransparency = 1
+            msgLbl.Text = message
+            msgLbl.TextColor3 = CONFIG.COLORS.TextDim
+            msgLbl.TextSize = 11
+            msgLbl.Font = Enum.Font.Gotham
+            msgLbl.TextXAlignment = Enum.TextXAlignment.Left
+            msgLbl.TextTruncate = Enum.TextTruncate.AtEnd
+            msgLbl.TextWrapped = true
+            msgLbl.Parent = bg
+            
+            if playerName then
+                notification.Name = playerName
+                
+                bg.MouseButton1Click:Connect(function()
+                    local ok, err = pcall(scrollToPlayer, playerName)
+                end)
+                bg.MouseEnter:Connect(function()
+                    tweenObject(bg, { BackgroundColor3 = Color3.fromRGB(38, 38, 50) }):Play()
+                end)
+                bg.MouseLeave:Connect(function()
+                    tweenObject(bg, { BackgroundColor3 = CONFIG.COLORS.Background }):Play()
+                end)
+                
+                local viewNotifBtn = Instance.new("TextButton")
+                viewNotifBtn.Size = UDim2.new(0, 36, 0, 18)
+                viewNotifBtn.Position = UDim2.new(1, -42, 0, 8)
+                viewNotifBtn.BackgroundColor3 = Color3.fromRGB(180, 20, 20)
+                viewNotifBtn.BorderSizePixel = 0
+                viewNotifBtn.Text = "VIEW"
+                viewNotifBtn.TextColor3 = Color3.new(1, 1, 1)
+                viewNotifBtn.TextSize = 9
+                viewNotifBtn.Font = Enum.Font.GothamBold
+                viewNotifBtn.ZIndex = 105
+                viewNotifBtn.AutoButtonColor = false
+                viewNotifBtn.Active = true
+                viewNotifBtn.Parent = bg
+                makeCorner(viewNotifBtn, 4)
+                viewNotifBtn.MouseButton1Click:Connect(function()
+                    local ok, err = pcall(viewPlayer, playerName)
+                end)
+            end
+            
+            tweenObject(notification, { Size = UDim2.new(1, 0, 0, 72) }):Play()
+            for _, child in ipairs(container:GetChildren()) do
+                if child:IsA("Frame") and child ~= notification then
+                    child.LayoutOrder = math.max(0, child.LayoutOrder - 1)
+                end
+            end
+            task.delay(4, function()
+                pcall(function()
+                    tweenObject(notification, { Size = UDim2.new(1, 0, 0, 0) }):Play()
+                    task.delay(0.3, function() notification:Destroy() end)
+                end)
+            end)
+        end
+    }
+end
+
+notifications = Notifications.new(ScreenGui)
+
+local function createCard(player)
+    if playerCards[player.Name] then return end
+    local card = Instance.new("Frame")
+    card.Name = player.Name
+    card.Size = UDim2.new(1, 0, 0, 132)
+    card.BackgroundColor3 = CONFIG.COLORS.CardBackground
+    card.BorderSizePixel = 0
+    card.Parent = ScrollFrame
+    makeCorner(card, 8)
+    local cardStroke = makeStroke(card, CONFIG.COLORS.Border, 1)
+    local hoverOverlay = Instance.new("Frame")
+    hoverOverlay.Size = UDim2.new(1, 0, 1, 0)
+    hoverOverlay.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    hoverOverlay.BackgroundTransparency = 1
+    hoverOverlay.ZIndex = 1
+    hoverOverlay.Parent = card
+    makeCorner(hoverOverlay, 8)
+    card.MouseEnter:Connect(function() tweenObject(hoverOverlay, { BackgroundTransparency = 0.94 }):Play() end)
+    card.MouseLeave:Connect(function() tweenObject(hoverOverlay, { BackgroundTransparency = 1 }):Play() end)
+    local statusBar = Instance.new("Frame")
+    statusBar.Size = UDim2.new(0, 4, 0.85, 0)
+    statusBar.Position = UDim2.new(0, 4, 0.075, 0)
+    statusBar.BackgroundColor3 = CONFIG.COLORS.Analyzing
+    statusBar.BorderSizePixel = 0
+    statusBar.ZIndex = 3
+    statusBar.Parent = card
+    makeCorner(statusBar, 4)
+    local avatarFrame = Instance.new("Frame")
+    avatarFrame.Size = UDim2.new(0, 38, 0, 38)
+    avatarFrame.Position = UDim2.new(0, 14, 0, 8)
+    avatarFrame.BackgroundColor3 = CONFIG.COLORS.TitleBar
+    avatarFrame.BorderSizePixel = 0
+    avatarFrame.ZIndex = 3
+    avatarFrame.Parent = card
+    makeCorner(avatarFrame, 19)
+    local avatar = Instance.new("ImageLabel")
+    avatar.Size = UDim2.new(1, 0, 1, 0)
+    avatar.BackgroundTransparency = 1
+    avatar.ZIndex = 4
+    avatar.Parent = avatarFrame
+    pcall(function()
+        avatar.Image = Players:GetUserThumbnailAsync(player.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size48x48)
+    end)
+    local userLbl = Instance.new("TextLabel")
+    userLbl.Size = UDim2.new(1, -120, 0, 17)
+    userLbl.Position = UDim2.new(0, 58, 0, 8)
+    userLbl.BackgroundTransparency = 1
+    userLbl.Text = player.Name
+    userLbl.TextColor3 = CONFIG.COLORS.Text
+    userLbl.TextSize = 12
+    userLbl.Font = Enum.Font.GothamBold
+    userLbl.TextXAlignment = Enum.TextXAlignment.Left
+    userLbl.TextTruncate = Enum.TextTruncate.AtEnd
+    userLbl.ZIndex = 3
+    userLbl.Parent = card
+    local dispLbl = Instance.new("TextLabel")
+    dispLbl.Size = UDim2.new(1, -120, 0, 14)
+    dispLbl.Position = UDim2.new(0, 58, 0, 25)
+    dispLbl.BackgroundTransparency = 1
+    dispLbl.Text = "@" .. player.DisplayName
+    dispLbl.TextColor3 = CONFIG.COLORS.TextDim
+    dispLbl.TextSize = 11
+    dispLbl.Font = Enum.Font.Gotham
+    dispLbl.TextXAlignment = Enum.TextXAlignment.Left
+    dispLbl.TextTruncate = Enum.TextTruncate.AtEnd
+    dispLbl.ZIndex = 3
+    dispLbl.Parent = card
+    local whitelistBtn = Instance.new("TextButton")
+    whitelistBtn.Size = UDim2.new(0, 50, 0, 24)
+    whitelistBtn.Position = UDim2.new(1, -124, 0, 9)
+    whitelistBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 55)
+    whitelistBtn.BorderSizePixel = 0
+    whitelistBtn.Text = "WHITELIST"
+    whitelistBtn.TextColor3 = CONFIG.COLORS.TextDim
+    whitelistBtn.TextSize = 9
+    whitelistBtn.Font = Enum.Font.GothamBold
+    whitelistBtn.ZIndex = 5
+    whitelistBtn.Parent = card
+    makeCorner(whitelistBtn, 6)
+    local viewBtn = Instance.new("TextButton")
+    viewBtn.Size = UDim2.new(0, 34, 0, 24)
+    viewBtn.Position = UDim2.new(1, -70, 0, 9)
+    viewBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 55)
+    viewBtn.BorderSizePixel = 0
+    viewBtn.Text = "VIEW"
+    viewBtn.TextColor3 = CONFIG.COLORS.TextDim
+    viewBtn.TextSize = 9
+    viewBtn.Font = Enum.Font.GothamBold
+    viewBtn.ZIndex = 5
+    viewBtn.Parent = card
+    makeCorner(viewBtn, 6)
+    local copyBtn = Instance.new("TextButton")
+    copyBtn.Size = UDim2.new(0, 34, 0, 24)
+    copyBtn.Position = UDim2.new(1, -36, 0, 9)
+    copyBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 55)
+    copyBtn.BorderSizePixel = 0
+    copyBtn.Text = "COPY"
+    copyBtn.TextColor3 = CONFIG.COLORS.TextDim
+    copyBtn.TextSize = 9
+    copyBtn.Font = Enum.Font.GothamBold
+    copyBtn.ZIndex = 5
+    copyBtn.Parent = card
+    makeCorner(copyBtn, 6)
+    local divider = Instance.new("Frame")
+    divider.Size = UDim2.new(1, -16, 0, 1)
+    divider.Position = UDim2.new(0, 8, 0, 50)
+    divider.BackgroundColor3 = CONFIG.COLORS.Border
+    divider.BackgroundTransparency = 0.5
+    divider.BorderSizePixel = 0
+    divider.ZIndex = 2
+    divider.Parent = card
+    local studLbl = Instance.new("TextLabel")
+    studLbl.Size = UDim2.new(0.5, -14, 0, 16)
+    studLbl.Position = UDim2.new(0, 14, 0, 56)
+    studLbl.BackgroundTransparency = 1
+    studLbl.Text = "Speed: --"
+    studLbl.TextColor3 = CONFIG.COLORS.TextDim
+    studLbl.TextSize = 11
+    studLbl.Font = Enum.Font.Gotham
+    studLbl.TextXAlignment = Enum.TextXAlignment.Left
+    studLbl.ZIndex = 3
+    studLbl.Parent = card
+    local wsLbl = Instance.new("TextLabel")
+    wsLbl.Size = UDim2.new(0.5, -14, 0, 16)
+    wsLbl.Position = UDim2.new(0.5, 0, 0, 56)
+    wsLbl.BackgroundTransparency = 1
+    wsLbl.Text = "WS: --"
+    wsLbl.TextColor3 = CONFIG.COLORS.TextDim
+    wsLbl.TextSize = 11
+    wsLbl.Font = Enum.Font.Gotham
+    wsLbl.TextXAlignment = Enum.TextXAlignment.Right
+    wsLbl.ZIndex = 3
+    wsLbl.Parent = card
+    local groundLbl = Instance.new("TextLabel")
+    groundLbl.Size = UDim2.new(1, -14, 0, 14)
+    groundLbl.Position = UDim2.new(0, 14, 0, 74)
+    groundLbl.BackgroundTransparency = 1
+    groundLbl.Text = "Grounded"
+    groundLbl.TextColor3 = CONFIG.COLORS.Clean
+    groundLbl.TextSize = 9
+    groundLbl.Font = Enum.Font.GothamBold
+    groundLbl.TextXAlignment = Enum.TextXAlignment.Left
+    groundLbl.ZIndex = 3
+    groundLbl.Parent = card
+    local statusIcon = Instance.new("ImageLabel")
+    statusIcon.Size = UDim2.new(0, 16, 0, 16)
+    statusIcon.Position = UDim2.new(0, 14, 0, 92)
+    statusIcon.BackgroundTransparency = 1
+    statusIcon.Image = ICONS.analyzing
+    statusIcon.ScaleType = Enum.ScaleType.Fit
+    statusIcon.ZIndex = 3
+    statusIcon.Parent = card
+    local statusLbl = Instance.new("TextLabel")
+    statusLbl.Size = UDim2.new(1, -36, 0, 16)
+    statusLbl.Position = UDim2.new(0, 34, 0, 92)
+    statusLbl.BackgroundTransparency = 1
+    statusLbl.Text = "Analyzing..."
+    statusLbl.TextColor3 = CONFIG.COLORS.Analyzing
+    statusLbl.TextSize = 12
+    statusLbl.Font = Enum.Font.GothamBold
+    statusLbl.TextXAlignment = Enum.TextXAlignment.Left
+    statusLbl.ZIndex = 3
+    statusLbl.Parent = card
+    local flagsLbl = Instance.new("TextLabel")
+    flagsLbl.Size = UDim2.new(1, -14, 0, 16)
+    flagsLbl.Position = UDim2.new(0, 14, 0, 112)
+    flagsLbl.BackgroundTransparency = 1
+    flagsLbl.Text = ""
+    flagsLbl.TextColor3 = CONFIG.COLORS.Cheat
+    flagsLbl.TextSize = 10
+    flagsLbl.Font = Enum.Font.GothamBold
+    flagsLbl.TextXAlignment = Enum.TextXAlignment.Left
+    flagsLbl.TextTruncate = Enum.TextTruncate.AtEnd
+    flagsLbl.ZIndex = 3
+    flagsLbl.Parent = card
+    copyBtn.MouseButton1Click:Connect(function()
+        pcall(function() setclipboard(player.Name) end)
+        tweenObject(copyBtn, { BackgroundColor3 = CONFIG.COLORS.Clean, TextColor3 = Color3.new(1, 1, 1) }):Play()
+        task.delay(0.4, function()
+            pcall(function() tweenObject(copyBtn, { BackgroundColor3 = Color3.fromRGB(40, 40, 55), TextColor3 = CONFIG.COLORS.TextDim }):Play() end)
+        end)
+    end)
+    viewBtn.MouseButton1Click:Connect(function()
+        viewPlayer(player.Name)
+        tweenObject(viewBtn, { BackgroundColor3 = CONFIG.COLORS.Accent, TextColor3 = Color3.new(1, 1, 1) }):Play()
+        task.delay(0.4, function()
+            pcall(function() tweenObject(viewBtn, { BackgroundColor3 = Color3.fromRGB(40, 40, 55), TextColor3 = CONFIG.COLORS.TextDim }):Play() end)
+        end)
+    end)
+    whitelistBtn.MouseButton1Click:Connect(function()
+        whitelistedPlayers[player.Name] = not whitelistedPlayers[player.Name]
+        if whitelistedPlayers[player.Name] then
+            tweenObject(whitelistBtn, { BackgroundColor3 = Color3.fromRGB(40, 50, 80), TextColor3 = CONFIG.COLORS.Accent }):Play()
+            card.BackgroundColor3 = Color3.fromRGB(22, 26, 55)
+            cardStroke.Color = CONFIG.COLORS.Accent
+            cardStroke.Transparency = 0
+            statusBar.BackgroundColor3 = CONFIG.COLORS.Accent
+            statusIcon.Image = ICONS.normal
+            statusLbl.Text = "WHITELISTED"
+            statusLbl.TextColor3 = CONFIG.COLORS.Accent
+            userLbl.TextColor3 = CONFIG.COLORS.Accent
+            dispLbl.TextColor3 = Color3.fromRGB(130, 160, 255)
+            flagsLbl.Text = ""
+            detectedPlayers[player.Name] = nil
+        else
+            tweenObject(whitelistBtn, { BackgroundColor3 = Color3.fromRGB(40, 40, 55), TextColor3 = CONFIG.COLORS.TextDim }):Play()
+            card.BackgroundColor3 = CONFIG.COLORS.CardBackground
+            cardStroke.Color = CONFIG.COLORS.Border
+            cardStroke.Transparency = 0.5
+            playerData[player.Name] = nil
+        end
+    end)
+    playerCards[player.Name] = {
+        card = card, cardStroke = cardStroke, statusBar = statusBar,
+        statusIcon = statusIcon, statusLbl = statusLbl, userLbl = userLbl,
+        dispLbl = dispLbl, studLbl = studLbl, wsLbl = wsLbl,
+        flagsLbl = flagsLbl, groundLbl = groundLbl, hoverOverlay = hoverOverlay,
+    }
+end
+
+local function removeCard(player)
+    if playerCards[player.Name] then
+        playerCards[player.Name].card:Destroy()
+        playerCards[player.Name] = nil
+    end
+    playerData[player.Name] = nil
+    detectedPlayers[player.Name] = nil
+    whitelistedPlayers[player.Name] = nil
+end
+
+local function isGrounded(hrp, character)
+    local params = RaycastParams.new()
+    params.FilterDescendantsInstances = { character }
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    return workspace:Raycast(hrp.Position, Vector3.new(0, -4.5, 0), params) ~= nil
+end
+
+local function checkCollisions(hrp, character)
+    local params = RaycastParams.new()
+    params.FilterDescendantsInstances = { character }
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    local hits = 0
+    local dirs = {
+        Vector3.new(0, -3, 0),
+        Vector3.new(3, 0, 0),
+        Vector3.new(-3, 0, 0),
+        Vector3.new(0, 0, 3),
+        Vector3.new(0, 0, -3)
+    }
+    for _, dir in ipairs(dirs) do
+        if workspace:Raycast(hrp.Position, dir, params) then hits = hits + 1 end
+    end
+    return hits
+end
+
+local function checkServerTeleport()
+    local totalPlayers = 0
+    local teleportingPlayers = 0
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and playerData[player.Name] then
+            local character = player.Character
+            if character then
+                local hrp = character:FindFirstChild("HumanoidRootPart")
+                if hrp then
+                    totalPlayers = totalPlayers + 1
+                    local data = playerData[player.Name]
+                    local now = tick()
+                    local dt = now - (data.lastCheck or now)
+                    local distance = (hrp.Position - data.lastPosition).Magnitude
+                    if dt < 0.5 and distance > CONFIG.TELEPORT_DISTANCE then
+                        teleportingPlayers = teleportingPlayers + 1
+                    end
+                end
+            end
+        end
+    end
+    return totalPlayers >= 3 and (teleportingPlayers / totalPlayers) > 0.5
+end
+
+local function checkPlayer(player)
+    if player == LocalPlayer then return end
+    local character = player.Character
+    if not character then return end
+    local hrp = character:FindFirstChild("HumanoidRootPart")
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if not hrp or not humanoid then return end
+    local card = playerCards[player.Name]
+    if not card then return end
+    if not playerData[player.Name] then
+        playerData[player.Name] = { airTime = 0, lastPosition = hrp.Position, lastCheck = tick(), speedSamples = {}, collisionSamples = {}, wasDetected = false }
+    end
+    local data = playerData[player.Name]
+    local vel = hrp.AssemblyLinearVelocity
+    local hSpeed = Vector3.new(vel.X, 0, vel.Z).Magnitude
+    local totalSpeed = vel.Magnitude
+    local walkSpeed = math.max(humanoid.WalkSpeed, 1)
+    local jumpPower = humanoid.JumpPower
+    local grounded = isGrounded(hrp, character)
+    data.airTime = grounded and 0 or (data.airTime + CONFIG.CHECK_INTERVAL)
+    local now = tick()
+    local dt = now - (data.lastCheck or now)
+    local distance = (hrp.Position - data.lastPosition).Magnitude
+    data.lastPosition = hrp.Position
+    data.lastCheck = now
+    table.insert(data.speedSamples, hSpeed)
+    if #data.speedSamples > CONFIG.SAMPLE_COUNT then table.remove(data.speedSamples, 1) end
+    local avgSpeed = 0
+    for _, s in ipairs(data.speedSamples) do avgSpeed = avgSpeed + s end
+    avgSpeed = avgSpeed / #data.speedSamples
+    local collisions = checkCollisions(hrp, character)
+    table.insert(data.collisionSamples, collisions)
+    if #data.collisionSamples > 3 then table.remove(data.collisionSamples, 1) end
+    local avgCollision = 0
+    for _, c in ipairs(data.collisionSamples) do avgCollision = avgCollision + c end
+    avgCollision = avgCollision / #data.collisionSamples
+    local teleported = false
+    if dt < 0.5 and distance > CONFIG.TELEPORT_DISTANCE and hSpeed < CONFIG.TELEPORT_DISTANCE then
+        if not serverTeleporting then
+            teleported = true
+        end
+    end
+    card.studLbl.Text = string.format("Speed: %.1f s/s", hSpeed)
+    card.wsLbl.Text = string.format("WS: %d", walkSpeed)
+    card.groundLbl.Text = grounded and "Grounded" or "Airborne"
+    card.groundLbl.TextColor3 = grounded and CONFIG.COLORS.Clean or CONFIG.COLORS.Warning
+    if whitelistedPlayers[player.Name] then
+        card.statusBar.BackgroundColor3 = CONFIG.COLORS.Accent
+        card.statusIcon.Image = ICONS.normal
+        card.statusLbl.Text = "WHITELISTED"
+        card.statusLbl.TextColor3 = CONFIG.COLORS.Accent
+        card.userLbl.TextColor3 = CONFIG.COLORS.Accent
+        card.dispLbl.TextColor3 = Color3.fromRGB(130, 160, 255)
+        card.flagsLbl.Text = ""
+        if data.wasDetected then
+            data.wasDetected = false
+            detectedPlayers[player.Name] = nil
+        end
+        return
+    end
+    local flags = {}
+    if avgSpeed > walkSpeed * CONFIG.SPEED_MULTIPLIER and avgSpeed > 16 then table.insert(flags, "Speed") end
+    if data.airTime > CONFIG.MAX_AIR_TIME and hSpeed > 5 and vel.Y > -5 and vel.Y < 5 then table.insert(flags, "Fly") end
+    if totalSpeed > CONFIG.FLING_THRESHOLD then table.insert(flags, "Fling") end
+    if vel.Y > jumpPower * CONFIG.JUMP_MULTIPLIER and vel.Y > 18 then table.insert(flags, "Abnormal Jump") end
+    if teleported then table.insert(flags, "Teleport") end
+    if avgCollision == 0 and not grounded and hSpeed > 16 and data.airTime > 1.0 and math.abs(vel.Y) < 10 then table.insert(flags, "NoClip") end
+    if #flags > 0 then
+        card.statusBar.BackgroundColor3 = CONFIG.COLORS.Cheat
+        card.statusIcon.Image = ICONS.scripter
+        card.statusLbl.Text = "SCRIPTER DETECTED"
+        card.statusLbl.TextColor3 = CONFIG.COLORS.Cheat
+        card.userLbl.TextColor3 = CONFIG.COLORS.Cheat
+        card.dispLbl.TextColor3 = Color3.fromRGB(200, 100, 100)
+        card.flagsLbl.Text = table.concat(flags, " | ")
+        card.flagsLbl.TextColor3 = CONFIG.COLORS.Cheat
+        if not data.wasDetected then
+            if not notifCooldowns[player.Name] or (tick() - notifCooldowns[player.Name] > notifCooldown) then
+                notifications:show("Cheater Detected!", player.Name .. " flagged: " .. table.concat(flags, ", "), CONFIG.COLORS.Cheat, ICONS.scripter, player.Name)
+                notifCooldowns[player.Name] = tick()
+            end
+            tweenObject(card.hoverOverlay, { BackgroundTransparency = 0.75, BackgroundColor3 = CONFIG.COLORS.Cheat }):Play()
+            task.delay(0.6, function()
+                pcall(function() tweenObject(card.hoverOverlay, { BackgroundTransparency = 1, BackgroundColor3 = Color3.fromRGB(255, 255, 255) }):Play() end)
+            end)
+        end
+        data.wasDetected = true
+        detectedPlayers[player.Name] = true
+    else
+        card.statusBar.BackgroundColor3 = CONFIG.COLORS.Clean
+        card.statusIcon.Image = ICONS.normal
+        card.statusLbl.Text = "Normal"
+        card.statusLbl.TextColor3 = CONFIG.COLORS.Clean
+        card.userLbl.TextColor3 = CONFIG.COLORS.Text
+        card.dispLbl.TextColor3 = CONFIG.COLORS.TextDim
+        card.flagsLbl.Text = ""
+        if data.wasDetected then
+            data.wasDetected = false
+            detectedPlayers[player.Name] = nil
+        end
+    end
+end
+
+local function setupPlayer(player)
+    if player == LocalPlayer then return end
+    createCard(player)
+    player.CharacterAdded:Connect(function() playerData[player.Name] = nil end)
+end
+for _, player in ipairs(Players:GetPlayers()) do setupPlayer(player) end
+Players.PlayerAdded:Connect(setupPlayer)
+Players.PlayerRemoving:Connect(removeCard)
+
+local function handleLocalRespawn(character)
+    if not currentViewTarget then return end
+    task.wait(0.5)
+    local function tryLock()
+        local targetPlayer = Players:FindFirstChild(currentViewTarget)
+        if targetPlayer and targetPlayer.Character then
+            local hum = targetPlayer.Character:FindFirstChildOfClass("Humanoid")
+            if hum and hum.Health > 0 then
+                workspace.CurrentCamera.CameraSubject = hum
+                UnviewBtn.Visible = true
+                return true
+            end
+        end
+        return false
+    end
+    
+    if not tryLock() then
+        local start = tick()
+        local conn
+        conn = RunService.Heartbeat:Connect(function()
+            if not currentViewTarget or tick() - start > 5 then
+                if conn then conn:Disconnect() end
+                return
+            end
+            if tryLock() then
+                if conn then conn:Disconnect() end
+            end
+        end)
+    end
+end
+
+if LocalPlayer.Character then
+    LocalPlayer.CharacterAdded:Connect(handleLocalRespawn)
+else
+    LocalPlayer.CharacterAdded:Connect(handleLocalRespawn)
+end
+
+local elapsed = 0
+RunService.Heartbeat:Connect(function(dt)
+    local count = 0
+    local detected = 0
+    for name in pairs(playerCards) do
+        count = count + 1
+        if detectedPlayers[name] then detected = detected + 1 end
+    end
+    PlayerCountLabel.Text = string.format("Players: %d", count)
+    DetectedCountLabel.Text = string.format("Detected: %d", detected)
+    DetectedCountLabel.TextColor3 = detected > 0 and CONFIG.COLORS.Cheat or CONFIG.COLORS.TextDim
+    if not detectorEnabled then return end
+    elapsed = elapsed + dt
+    if elapsed < CONFIG.CHECK_INTERVAL then return end
+    elapsed = 0
+    serverTeleporting = checkServerTeleport()
+    for _, player in ipairs(Players:GetPlayers()) do pcall(checkPlayer, player) end
+end)
+
+UserInputService.InputBegan:Connect(function(input, gpe)
+    if gpe then return end
+    if input.KeyCode == Enum.KeyCode.F4 then toggleDetector() end
+end)
+
+task.delay(2, function()
+    notifications:show("Scripter Detector loaded", "", CONFIG.COLORS.Clean, ICONS.logo)
+end)
