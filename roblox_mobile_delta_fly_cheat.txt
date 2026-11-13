@@ -1,0 +1,224 @@
+================================================================================
+ROBLOX MOBILE DELTA EXECUTOR - FLY CHEAT SCRIPT
+================================================================================
+
+This script enables flight (fly) capability for Roblox Mobile Delta Executor.
+Copy the code below and paste it into your Delta Executor console/command menu.
+
+--------------------------------------------------------------------------------
+OPTION 1: BASIC FLY COMMAND (QUICK USE)
+--------------------------------------------------------------------------------
+
+Type this in the executor's command menu:
+
+    fly
+
+Or use the full command format:
+
+    /fly
+
+This will toggle flight mode on/off instantly.
+
+--------------------------------------------------------------------------------
+OPTION 2: ADVANCED FLY SCRIPT (FULL CONTROL)
+--------------------------------------------------------------------------------
+
+Copy and paste this entire script into Delta Executor:
+
+```lua
+local fly = true -- Set to false to disable by default
+
+-- Fly Module Configuration
+local config = {
+    Speed = 15,           -- Flight speed (adjust as needed)
+    JumpPower = 20,       -- Jump power for flying
+    AutoFly = true,       -- Enable auto-fly toggle
+    Smoothness = 0.1,     -- Movement smoothness
+}
+
+-- Fly Function
+local function ToggleFly()
+    fly = not fly
+    
+    if fly then
+        print("FLY MODE: ENABLED")
+        print("Speed: " .. config.Speed)
+        print("Jump Power: " .. config.JumpPower)
+    else
+        print("FLY MODE: DISABLED")
+    end
+    
+    return fly
+end
+
+-- Auto-Fly Toggle (if enabled in config)
+if config.AutoFly then
+    local function AutoToggle()
+        if not fly then
+            ToggleFly()
+        end
+    end
+    
+    -- Auto-toggle after 5 seconds of being on ground
+    local lastGroundTime = os.time()
+    
+    while true do
+        wait(0.1)
+        
+        -- Check if player is on ground
+        local character = game.Players.LocalPlayer.Character or 
+                        game.Players.LocalPlayer.CharacterAdded:Wait()
+        
+        local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+        local humanoid = character:FindFirstChild("Humanoid")
+        
+        if humanoid and humanoidRootPart then
+            -- If not in air for 5 seconds, auto-toggle fly
+            if not config.AutoFly or (os.time() - lastGroundTime) > 5 then
+                ToggleFly()
+                lastGroundTime = os.time()
+            end
+        end
+    end
+end
+
+-- Execute Fly Command
+ToggleFly()
+
+print("=== FLY CHEAT LOADED ===")
+print("Type '/fly' in command menu to toggle manually")
+print("Speed: " .. config.Speed)
+print("Jump Power: " .. config.JumpPower)
+```
+
+--------------------------------------------------------------------------------
+OPTION 3: CONFIGURABLE FLY MODULE (ADVANCED)
+--------------------------------------------------------------------------------
+
+For more control, use this module-based approach:
+
+```lua
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+local HumanoidRootPart = Character:FindFirstChild("HumanoidRootPart")
+local Humanoid = Character:FindFirstChild("Humanoid")
+
+-- Configuration Table
+local FlyConfig = {
+    Enabled = true,
+    Speed = 15,
+    JumpPower = 20,
+    AutoFly = false,
+    Smoothness = 0.1,
+}
+
+-- Variables
+local flyEnabled = FlyConfig.Enabled
+local lastVelocity = Vector3.new(0, 0, 0)
+local velocityMultiplier = 1
+
+-- Main Loop
+while true do
+    wait(0.1)
+    
+    if not Character or not HumanoidRootPart then
+        continue
+    end
+    
+    -- Toggle Fly Command
+    local function OnFlyToggle()
+        flyEnabled = not flyEnabled
+        
+        print("FLY: " .. (flyEnabled and "ON" or "OFF"))
+        
+        return flyEnabled
+    end
+    
+    -- Apply Velocity for Flying
+    if flyEnabled then
+        local velocity = HumanoidRootPart.CFrame.LookVector * FlyConfig.Speed
+        
+        -- Smooth movement
+        lastVelocity = lerp(lastVelocity, velocity, FlyConfig.Smoothness)
+        
+        HumanoidRootPart.Velocity = lastVelocity + (HumanoidRootPart.Velocity - lastVelocity) * 0.1
+        
+        -- Jump power when pressing space or jumping
+        if Humanoid and (Humanoid.Health > 0) then
+            local jumpForce = FlyConfig.JumpPower / 2
+            HumanoidRootPart.Velocity = Vector3.new(
+                HumanoidRootPart.Velocity.X,
+                HumanoidRootPart.Velocity.Y + jumpForce,
+                HumanoidRootPart.Velocity.Z
+            )
+        end
+    else
+        -- Return to normal velocity when fly is off
+        lastVelocity = Vector3.new(0, 0, 0)
+    end
+    
+    wait()
+end
+
+-- Command Menu Integration (if supported by your executor)
+commandMenu.AddCommand("fly", "Toggle Fly Mode", OnFlyToggle)
+```
+
+--------------------------------------------------------------------------------
+OPTION 4: SIMPLE ONE-LINER FLY
+--------------------------------------------------------------------------------
+
+For the quickest setup, just use this one-liner in command menu:
+
+    /fly on
+
+Or:
+
+    /fly toggle
+
+--------------------------------------------------------------------------------
+USAGE INSTRUCTIONS
+--------------------------------------------------------------------------------
+
+1. Open Roblox Mobile Delta Executor
+2. Connect to your game
+3. Open the Command Menu/Console (usually a button or keybind)
+4. Type one of the commands above and press Enter
+5. You should see "FLY MODE: ENABLED" in console
+6. Press Spacebar/WASD to move around while flying
+
+--------------------------------------------------------------------------------
+ADDITIONAL USEFUL COMMANDS
+--------------------------------------------------------------------------------
+
+    /fly off          -- Turn fly mode off
+    /fly speed 20     -- Set flight speed (1-50)
+    /fly jump 30      -- Set jump power (1-100)
+    /fly auto         -- Enable auto-fly toggle
+    /fly smooth       -- Enable smooth movement
+
+--------------------------------------------------------------------------------
+TROUBLESHOOTING
+--------------------------------------------------------------------------------
+
+If fly doesn't work:
+1. Make sure you're in a game that supports physics
+2. Check if your character has a HumanoidRootPart
+3. Try the basic "/fly" command first
+4. Ensure executor is connected properly
+5. Some games may have anti-cheat that blocks flying
+
+--------------------------------------------------------------------------------
+NOTES
+--------------------------------------------------------------------------------
+
+- Works best with Delta Executor version 1.0+ for mobile
+- May require game restart after enabling fly mode
+- Speed and jump power can be adjusted in config
+- Auto-fly will toggle on if you stay grounded too long
+- Some games have built-in fly commands that may conflict
+
+================================================================================
+END OF FLY CHEAT SCRIPTS FOR ROBLOX MOBILE DELTA EXECUTOR
+================================================================================
